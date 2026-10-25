@@ -1,0 +1,28 @@
+--- a/src/cpu/jit_arm64.c
++++ b/src/cpu/jit_arm64.c
+@@ -23,6 +23,14 @@
+ #include <stdlib.h>
+ #include <sys/mman.h>
+ #include <sys/ucontext.h>
++#include <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++/* iPadOS: no executable memory is made at run time (the entitlement for it needs a debugger or a
++ * JIT-enabling tool), so the translator stays off and guest code that the recompiled library does
++ * not cover is interpreted. pthread_jit_write_protect_np is not in the iOS SDK's public API. */
++#define BB_NO_JIT 1
++#define pthread_jit_write_protect_np(enabled) ((void)(enabled))
++#endif
+ 
+ #define M(name) ZYDIS_MNEMONIC_##name
+ 
+@@ -168,6 +176,10 @@
+     pthread_mutex_lock(&jit_lock);
+     if (!state) {
+         const char *env = getenv("BB_JIT");
++#ifdef BB_NO_JIT
++        /* BB_JIT=1 tries MAP_JIT anyway, for a device where the JIT has been enabled. */
++        if (!(env && env[0] == '1')) env = "0";
++#endif
+         void *p = (env && env[0] == '0') ? MAP_FAILED
+                 : mmap(NULL, CODE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+         if (p == MAP_FAILED) {

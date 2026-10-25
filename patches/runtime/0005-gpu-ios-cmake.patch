@@ -1,0 +1,15 @@
+--- a/gpu/CMakeLists.txt
++++ b/gpu/CMakeLists.txt
+@@ -241,7 +241,11 @@
+     set_source_files_properties(shim/bbport_metalfx.mm PROPERTIES LANGUAGE OBJCXX
+         COMPILE_OPTIONS "-fobjc-arc")
+     target_sources(bbgpu PRIVATE shim/bbport_metalfx.mm)
+-    target_link_libraries(bbgpu PUBLIC "-framework QuartzCore" "-framework Metal" "-framework Cocoa")
++    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
++        target_link_libraries(bbgpu PUBLIC "-framework QuartzCore" "-framework Metal" "-framework UIKit")
++    else()
++        target_link_libraries(bbgpu PUBLIC "-framework QuartzCore" "-framework Metal" "-framework Cocoa")
++    endif()
+     # Zydis's package names Zycore by -lZycore only: the deps prefix's lib directory.
+     target_link_directories(bbgpu PRIVATE ${CMAKE_PREFIX_PATH}/lib)
+ else()

@@ -1,0 +1,38 @@
+--- a/src/platform.h
++++ b/src/platform.h
+@@ -14,6 +14,14 @@
+ extern "C" {
+ #endif
+ 
++#ifdef __APPLE__
++#include <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++/* iPadOS: the same arm64 Darwin host as macOS, built as a static library inside the app. */
++#define BB_IOS 1
++#endif
++#endif
++
+ #if defined(__APPLE__) && defined(__aarch64__)
+ #define BB_MACOS 1
+ /* Native arm64: guest code runs in bbcpu. A fault in translated code has the guest registers
+@@ -114,7 +122,19 @@
+  * [BB_LOW_MIN, BB_LOW_MAX): host memory the guest sees (image, stacks, trampolines, the runtime's
+  * heap on macOS). [BB_USER_MIN, BB_USER_MAX): the game's own mappings. Under Rosetta 2 the range
+  * [0xfc0000000, 0x7000000000) cannot be mapped, so the game's range starts at 448 GiB there. */
+-#if defined(BB_MACOS) && defined(__aarch64__)
++#if defined(BB_IOS)
++/* iPadOS with the extended-virtual-addressing entitlement gives about 64 GiB of address space
++ * in all (macos-on-ios-public notes), so the macOS layout (512 GiB - 1 TiB) cannot be reserved.
++ * Starting values, below 64 GiB: 16 GiB for the game's own mappings (5 GiB of direct memory,
++ * the flexible pool and its reservations) and 8 GiB of host memory the guest sees. Measure with
++ * the app's "Probe address space" and override with -DBB_USER_MIN=... etc. when building. */
++#ifndef BB_LOW_MIN
++#define BB_LOW_MIN UINT64_C(0x0800000000)
++#define BB_LOW_MAX UINT64_C(0x0a00000000)
++#define BB_USER_MIN UINT64_C(0x0400000000)
++#define BB_USER_MAX UINT64_C(0x0800000000)
++#endif
++#elif defined(BB_MACOS) && defined(__aarch64__)
+ /* Native arm64 macOS: [0x180000000, 0x7000000000) is the shared region and the host's own
+  * allocations start at 0x7000000000 (the GPU driver reserves ~24 GiB there before main), so the
+  * game's range starts at 512 GiB and the low range sits just below its end, under 1 TiB. The

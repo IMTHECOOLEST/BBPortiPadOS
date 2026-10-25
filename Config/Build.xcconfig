@@ -1,0 +1,5 @@
+// Filled in by scripts/setup_deps.sh through Local.xcconfig when the libraries exist.
+BB_RUNTIME_LDFLAGS =
+BB_PKGTOOL_LDFLAGS =
+BB_EXTRA_DEFINES =
+#include? "Local.xcconfig"

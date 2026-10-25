@@ -1,0 +1,108 @@
+name: Build iPad app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 350
+    env:
+      RUNTIME_REPO: ${{ vars.RUNTIME_REPO || 'https://github.com/bloodborne-native/bloodborne-runtime.git' }}
+      HAS_SIGNING: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.PROVISIONING_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install xcodegen cmake ninja pkgconf glslang nasm
+
+      - name: Cache iOS dependencies
+        uses: actions/cache@v4
+        with:
+          path: Vendor/ios-deps
+          key: ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}
+
+      - name: Build the iOS libraries (SDL3, MoltenVK, FFmpeg, ...)
+        run: scripts/ios/build_deps.sh
+
+      - name: Build the runtime for iPadOS (patched bloodborne-runtime and bbcpu)
+        run: scripts/ios/build_runtime.sh
+
+      - name: Build the PKG extractor for iPadOS
+        run: scripts/ios/build_pkgtool.sh
+
+      - name: Fetch Python for iOS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/setup_deps.sh
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Install signing certificate and profile
+        if: env.HAS_SIGNING == 'true'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          TEAM=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
+          APPID=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          {
+            echo "PROFILE_NAME=$NAME"
+            echo "TEAM_ID=$TEAM"
+            echo "BUNDLE_ID=${APPID#*.}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build (signed with your profile)
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          xcodebuild build \
+            -project Bloodborne.xcodeproj -scheme Bloodborne -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Development" \
+            DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+
+      - name: Build (unsigned)
+        if: env.HAS_SIGNING != 'true'
+        run: |
+          xcodebuild build \
+            -project Bloodborne.xcodeproj -scheme Bloodborne -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package the IPA
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name 'Bloodborne.app' | head -1)
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          zip -qry Bloodborne.ipa Payload
+          codesign -d --entitlements - "$APP" 2>&1 | head -20 || true
+
+      # The recompiled game library is made from your own game and is never built here:
+      # scripts/mac/build_recomp_ios.sh, then scripts/mac/embed_recomp.sh.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bloodborne-ipad-ipa
+          path: Bloodborne.ipa
+          if-no-files-found: error

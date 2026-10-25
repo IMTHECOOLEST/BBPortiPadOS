@@ -1,0 +1,52 @@
+--- a/src/platform.c
++++ b/src/platform.c
+@@ -138,7 +138,18 @@
+ #include <dlfcn.h>
+ #include <objc/objc.h>
+ #include <mach/mach.h>
++#ifdef BB_IOS
++/* The iOS SDK has no mach_vm.h: the vm_* calls do the same (the vm_address_t and vm_size_t of an
++ * arm64 task are 64 bits wide). */
++#include <mach/vm_map.h>
++#define mach_vm_address_t vm_address_t
++#define mach_vm_size_t vm_size_t
++#define mach_vm_read_overwrite vm_read_overwrite
++#define mach_vm_region vm_region_64
++#define mach_vm_allocate vm_allocate
++#else
+ #include <mach/mach_vm.h>
++#endif
+ 
+ uint64_t bb_gettid(void) { uint64_t id=0; pthread_threadid_np(NULL,&id); return id; }
+ size_t bb_read_memory(void *dst, uintptr_t src, size_t n) {
+@@ -167,6 +178,22 @@
+     return 1;
+ }
+ int bb_shared_memory(const char *name, uint64_t size) {
++#ifdef BB_IOS
++    /* shm_open is denied in the iOS sandbox: an unlinked file in the app's temporary folder is
++     * the shared memory object (MAP_SHARED of its descriptor behaves the same). */
++    const char *dir=getenv("TMPDIR");
++    char path[1024];
++    for (unsigned attempt=0; attempt<16; ++attempt) {
++        snprintf(path,sizeof(path),"%s/%.20s-%d-%u",dir && *dir ? dir : "/tmp",name,(int)getpid(),attempt);
++        int fd=open(path,O_RDWR|O_CREAT|O_EXCL,0600);
++        if (fd<0) { if (errno==EEXIST) continue; return -1; }
++        unlink(path);
++        fcntl(fd,F_SETFD,FD_CLOEXEC);
++        if (ftruncate(fd,(off_t)size)) { close(fd); return -1; }
++        return fd;
++    }
++    return -1;
++#else
+     char path[64];
+     for (unsigned attempt=0; attempt<16; ++attempt) {
+         snprintf(path,sizeof(path),"/%.20s-%d-%u",name,(int)getpid(),attempt);
+@@ -178,6 +205,7 @@
+         return fd;
+     }
+     return -1;
++#endif
+ }
+ /* No hole punching in shared memory objects: the pages are cleared through the host view. The
+  * memory compressor keeps zero pages almost free. */

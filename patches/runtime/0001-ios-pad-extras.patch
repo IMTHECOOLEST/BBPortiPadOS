@@ -1,0 +1,66 @@
+--- a/src/runtime_pad.c
++++ b/src/runtime_pad.c
+@@ -43,6 +43,9 @@
+ #include <time.h>
+ #include <SDL3/SDL.h>
+ #include <sys/stat.h>
++#ifdef BB_IOS
++#include "bb_ios_pad.h"
++#endif
+ 
+ #define ERR_INVALID_ARG ((int32_t)0x80920001)
+ #define ERR_INVALID_HANDLE ((int32_t)0x80920003)
+@@ -1046,6 +1049,39 @@
+                 }
+             }
+         }
++#ifdef BB_IOS
++        {   /* DualSense / DualShock 4 extras through GameController (bb_ios_pad.m). */
++            BBNativePad np;
++            if (bb_ios_pad_sample(&np)) {
++                if (!d->touch_count)
++                    for (int i=0;i<np.touch_count;++i)
++                        d->touches[d->touch_count++]=(PadTouch){.x=np.x[i],.y=np.y[i],.id=(uint8_t)i};
++                if (np.has_motion && !motion_on()) {
++                    memcpy(d->orientation,np.orientation,sizeof d->orientation);
++                    memcpy(d->acceleration,np.acceleration,sizeof d->acceleration);
++                    memcpy(d->angular_velocity,np.angular_velocity,sizeof d->angular_velocity);
++                }
++                /* Gyro aiming (BB_GYRO_AIM=1): the controller's turn rate is added to the right
++                 * stick, BB_GYRO_SENS stick units per rad/s. Axis signs are unverified on a pad. */
++                const char *aim_on=getenv("BB_GYRO_AIM");
++                if (np.has_motion && aim_on && aim_on[0]=='1') {
++                    static float sens;
++                    if (sens<=0.0f) {
++                        const char *s=getenv("BB_GYRO_SENS");
++                        sens=s ? (float)atof(s) : 40.0f;
++                        if (sens<=0.0f) sens=40.0f;
++                    }
++                    float yaw=np.angular_velocity[1], pitch=np.angular_velocity[0];
++                    if (fabsf(yaw)<0.05f) yaw=0.0f;
++                    if (fabsf(pitch)<0.05f) pitch=0.0f;
++                    int rx=(int)d->right_x-(int)(yaw*sens);
++                    int ry=(int)d->right_y-(int)(pitch*sens);
++                    d->right_x=(uint8_t)(rx<0 ? 0 : rx>255 ? 255 : rx);
++                    d->right_y=(uint8_t)(ry<0 ? 0 : ry>255 ? 255 : ry);
++                }
++            }
++        }
++#endif
+         if (motion_on()) motion_from_pad(d,g,motion_dt);
+         // Back/Select on pads without a touch surface is a left-side click.
+         if ((d->buttons & BTN_TOUCHPAD) && !d->touch_count) touch_click(d,0);
+@@ -1282,7 +1318,12 @@
+     if (!param) return ERR_INVALID_ARG;
+     pthread_mutex_lock(&lock);
+     SDL_Gamepad *g=current_gamepad();
+-    if (g) SDL_RumbleGamepad(g,(uint16_t)(param[0]*257),(uint16_t)(param[1]*257),1000);
++    int handled=0;
++#ifdef BB_IOS
++    /* CoreHaptics on the controller's two handles (BB_HAPTICS=0 turns rumble off). */
++    handled=bb_ios_vibrate(param[0],param[1],1000);
++#endif
++    if (g && !handled) SDL_RumbleGamepad(g,(uint16_t)(param[0]*257),(uint16_t)(param[1]*257),1000);
+     pthread_mutex_unlock(&lock);
+     return 0;
+ }

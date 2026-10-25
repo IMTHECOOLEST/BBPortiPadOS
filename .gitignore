@@ -1,0 +1,9 @@
+Vendor/
+build/
+*.xcodeproj
+*.ipa
+.DS_Store
+# Never commit game data, dumps, keys or runtime/recomp outputs.
+*.pkg
+Config/Local.xcconfig
+App/bbpy/runtime/

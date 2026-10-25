@@ -1,0 +1,30 @@
+--- a/src/probe.c
++++ b/src/probe.c
+@@ -382,7 +382,12 @@
+      * closed below, and an assertion there must not end the process (exit 23) before exec. */
+     runtime_restarting = 1;
+     __sync_synchronize();
+-#ifndef _WIN32
++#if defined(BB_IOS)
++    /* No exec on iPadOS: a new resolution applies the next time the game is started from the app. */
++    runtime_restarting = 0;
++    puts("Runtime: restart the game from the app to apply this");
++    return;
++#elif !defined(_WIN32)
+     bb_close_from(3);
+     execlp("bash", "bash", "run.sh", (char *)NULL);
+     perror("runtime_restart: exec");
+@@ -447,7 +452,13 @@
+ static void *game_thread(void *unused) { (void)unused; run_game(); }
+ #endif
+ 
++#ifdef BB_IOS
++/* The app calls this on the main thread (App/Native/BBRuntime.c): the game runs on a thread of
++ * its own and the main thread pumps the window's events, as on macOS. */
++int bb_probe_main(int argc, char **argv) {
++#else
+ int main(int argc, char **argv) {
++#endif
+     setvbuf(stdout, NULL, _IONBF, 0);
+ #if !defined(_WIN32) && !defined(__APPLE__)
+     /* Keep host heap objects handed to the guest (thread handles, TLS) in the

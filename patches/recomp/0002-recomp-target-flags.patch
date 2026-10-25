@@ -1,0 +1,24 @@
+--- a/tools/recomp/recomp.sh
++++ b/tools/recomp/recomp.sh
+@@ -6,6 +6,9 @@
+ set -euo pipefail
+ cd -- "$(dirname -- "$0")/../.."
+ D=${BB_DEPS:-deps}
++# The library's target: TARGET_FLAGS="-arch arm64 -isysroot <iphoneos SDK> -miphoneos-version-min=17.0"
++# builds it for iPadOS (the generator itself always runs on this Mac).
++TARGET_FLAGS=${TARGET_FLAGS:--arch arm64}
+ G=out/recomp/gen
+ mkdir -p "$G"
+ offsets=("$@")
+@@ -26,9 +29,9 @@
+ done
+ echo "${#changed[@]} files to compile"
+ # Floating point as on x86: no fused multiply-add.
+-printf '%s\n' "${changed[@]}" | grep . | xargs -P "$(sysctl -n hw.ncpu)" -I{} clang -arch arm64 -O${OPT:-2} -g -std=gnu11 \
++printf '%s\n' "${changed[@]}" | grep . | xargs -P "$(sysctl -n hw.ncpu)" -I{} clang $TARGET_FLAGS -O${OPT:-2} -g -std=gnu11 \
+     -Wall -Wno-unused-label -Wno-unused-variable -ffp-contract=off -fno-strict-aliasing -fvisibility=hidden \
+     -I$D/include -Isrc -c {} -o {}.o || true
+ for f in "${changed[@]}"; do [[ -e $f.o && $f.o -nt $f ]] || { echo "failed: $f"; exit 1; }; done
+-clang -arch arm64 -dynamiclib "$G"/recomp*.o -o out/recomp/librecomp.dylib
++clang $TARGET_FLAGS -dynamiclib -install_name @rpath/librecomp.dylib "$G"/recomp*.o -o out/recomp/librecomp.dylib
+ echo "out/recomp/librecomp.dylib"
