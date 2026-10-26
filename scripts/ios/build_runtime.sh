@@ -30,22 +30,25 @@ export PKG_CONFIG_LIBDIR=$DEPS/lib/pkgconfig:$DEPS/share/pkgconfig
 read -r -a inc <<< "$(pkg-config --cflags sdl3)"
 NATIVE=$ROOT/App/Native
 
+# A file that does not compile does not stop the others: one run shows every error.
+failed=0
 # bbcpu (the recompiled code's runtime and the interpreter; the translator stays off on iPadOS).
 for f in recomp/src/cpu/*.c recomp/src/cpu/hostcall.S; do
-  "${CC[@]}" -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter -I"$DEPS/include" -c "$f" -o "$OUT/cpu/$(basename "$f").o"
+  "${CC[@]}" -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter -I"$DEPS/include" -c "$f" -o "$OUT/cpu/$(basename "$f").o" || failed=1
 done
 # Third-party audio decoder.
 for f in third_party/LibAtrac9/C/src/*.c; do
-  "${CC[@]}" -std=c99 -O2 -g -w -c "$f" -o "$OUT/atrac9/$(basename "$f" .c).o"
+  "${CC[@]}" -std=c99 -O2 -g -w -c "$f" -o "$OUT/atrac9/$(basename "$f" .c).o" || failed=1
 done
 # The runtime. vulkan_smoke needs the Vulkan loader, which iPadOS does not have.
 printf 'int vulkan_smoke(void) { return 1; }\n' > "$OUT/vulkan_smoke_stub.c"
 for f in src/probe.c src/runtime*.c src/platform.c "$OUT/vulkan_smoke_stub.c"; do
   "${CC[@]}" -std=c11 -O2 -g -Wall -Wextra -Wno-unknown-warning-option -Wno-unused-but-set-global -Wno-unused-parameter \
     -pthread -DBB_IOS=1 "${inc[@]}" -I"$DEPS/include" -I. -Isrc -Irecomp/src -I"$NATIVE" \
-    -c "$f" -o "$OUT/rt/$(basename "$f").o"
+    -c "$f" -o "$OUT/rt/$(basename "$f").o" || failed=1
 done
 mkdir -p "$ROOT/Vendor/runtime/lib"
+[[ $failed == 0 ]] || { echo "Some files above did not compile." >&2; exit 1; }
 libtool -static -o "$ROOT/Vendor/runtime/lib/libbbruntime.a" "$OUT"/cpu/*.o "$OUT"/atrac9/*.o "$OUT"/rt/*.o \
   "$DEPS/lib/libZydis.a" "$DEPS/lib/libZycore.a"
 
