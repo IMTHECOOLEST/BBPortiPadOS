@@ -62,17 +62,33 @@ gh() { echo "https://github.com/$1/archive/refs/tags/$2.tar.gz"; }
 
 cmake_package vulkan-headers "$(gh KhronosGroup/Vulkan-Headers $VULKAN_VERSION)"
 
-# MoltenVK: the Khronos release's iOS dylib. There is no Vulkan loader on iOS: SDL3 loads this
-# library (SDL_VULKAN_LIBRARY, set by the app).
+# MoltenVK: the Khronos release's iOS library. There is no Vulkan loader on iOS: SDL3 loads this
+# library (SDL_VULKAN_LIBRARY, set by the app). The release ships it for iOS as a dynamic XCFramework
+# (MoltenVK.xcframework/ios-arm64/MoltenVK.framework/MoltenVK, a dylib); the naked
+# dylib/iOS/libMoltenVK.dylib of older releases is macOS only now. Either one is copied out as
+# libMoltenVK.dylib, the name the rest of the build and the app use.
+moltenvk_ios_library() { # $1: the extracted release. Prints the device library, never a simulator's.
+  find "$1" -type f \( -path '*dylib/iOS/libMoltenVK.dylib' \
+    -o -path '*MoltenVK.xcframework/ios-*/MoltenVK.framework/MoltenVK' \) \
+    ! -path '*simulator*' ! -path '*maccatalyst*' | sort | sed -n 1p
+}
 if needed moltenvk; then
   echo "== moltenvk"
   a=$WORK/moltenvk-ios.tar
   [[ -f $a ]] || curl -fsSL --retry 3 -o "$a" "https://github.com/KhronosGroup/MoltenVK/releases/download/$MOLTENVK_VERSION/MoltenVK-ios.tar"
   rm -rf "$WORK/src/moltenvk"; mkdir -p "$WORK/src/moltenvk"; tar -xf "$a" -C "$WORK/src/moltenvk"
-  dylib=$(find "$WORK/src/moltenvk" -path '*dylib/iOS/*' -name libMoltenVK.dylib | head -1)
-  [[ -n $dylib ]] || { echo "libMoltenVK.dylib (iOS) not found in the MoltenVK release" >&2; exit 1; }
+  dylib=$(moltenvk_ios_library "$WORK/src/moltenvk")
+  if [[ -z $dylib ]]; then
+    echo "No iOS MoltenVK library in MoltenVK-ios.tar of $MOLTENVK_VERSION. It holds:" >&2
+    find "$WORK/src/moltenvk" \( -name '*.dylib' -o -name '*.framework' -o -name '*.xcframework' -o -name '*.a' \) \
+      | sed "s#^$WORK/src/moltenvk/##" | sort | sed -n 1,40p >&2
+    exit 1
+  fi
+  echo "   ${dylib#"$WORK"/src/moltenvk/}"
+  lipo -archs "$dylib" | tr ' ' '\n' | grep -qx arm64 || { echo "$dylib has no arm64 slice: $(lipo -archs "$dylib")" >&2; exit 1; }
   mkdir -p "$PREFIX/lib"; cp "$dylib" "$PREFIX/lib/libMoltenVK.dylib"
   install_name_tool -id @rpath/libMoltenVK.dylib "$PREFIX/lib/libMoltenVK.dylib"
+  codesign --force --sign - "$PREFIX/lib/libMoltenVK.dylib"
   touch "$(mark moltenvk)"
 fi
 
