@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 350
     env:
       RUNTIME_REPO: ${{ vars.RUNTIME_REPO || 'https://github.com/bloodborne-native/bloodborne-runtime.git' }}
