@@ -1,4 +1,3 @@
-
 name: Build iPad app
 
 on:
@@ -21,22 +20,35 @@ jobs:
       - name: Install tools
         run: brew install xcodegen cmake ninja pkgconf glslang nasm
 
-      - name: Cache iOS dependencies
-        uses: actions/cache@v4
+      # The libraries take minutes: they are saved even when a later step fails (each finished
+      # package leaves a marker, so a half-finished run resumes where it stopped).
+      - name: Restore iOS dependencies
+        uses: actions/cache/restore@v4
         with:
           path: Vendor/ios-deps
-          key: ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}
+          key: ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}-
 
       - name: Build the iOS libraries (SDL3, MoltenVK, FFmpeg, ...)
         run: bash scripts/ios/build_deps.sh
+
+      - name: Save iOS dependencies
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: Vendor/ios-deps
+          key: ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}-${{ github.run_id }}
 
       - name: Build the runtime for iPadOS (patched bloodborne-runtime and bbcpu)
         run: bash scripts/ios/build_runtime.sh
 
       - name: Build the PKG extractor for iPadOS
+        if: ${{ !cancelled() }}
         run: bash scripts/ios/build_pkgtool.sh
 
       - name: Fetch Python for iOS
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/setup_deps.sh
