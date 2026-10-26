@@ -52,7 +52,7 @@ libtool -static -o "$ROOT/Vendor/runtime/lib/libbbruntime.a" "$OUT"/cpu/*.o "$OU
 # The GPU library.
 cmake -S gpu -B "$OUT/gpu" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO=off -DBB_LTO=OFF \
   -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_PREFIX_PATH="$DEPS" -DCMAKE_INSTALL_NAME_DIR=@rpath \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_PREFIX_PATH="$DEPS" -DCMAKE_FIND_ROOT_PATH="$DEPS" -DCMAKE_INSTALL_NAME_DIR=@rpath \
   -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON -DVulkan_INCLUDE_DIR="$DEPS/include" \
   -DVulkan_LIBRARY="$DEPS/lib/libMoltenVK.dylib" >/dev/null
 ninja -C "$OUT/gpu" bbgpu > "$OUT/gpu-build.log" 2>&1 || { tail -40 "$OUT/gpu-build.log" >&2; echo "GPU library build failed ($OUT/gpu-build.log)" >&2; exit 1; }
