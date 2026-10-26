@@ -99,10 +99,22 @@ jobs:
       - name: Build (unsigned)
         if: env.HAS_SIGNING != 'true'
         run: |
+          mkdir -p Vendor/logs
+          set +e
           xcodebuild build \
             -project Bloodborne.xcodeproj -scheme Bloodborne -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > Vendor/logs/xcodebuild.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "==== errors ===="
+            grep -n -E "error:|Undefined symbols|ld: |BUILD FAILED|exit code" Vendor/logs/xcodebuild.log | head -60
+            echo "==== last 40 lines ===="
+            tail -40 Vendor/logs/xcodebuild.log
+          fi
+          exit $status
 
       - name: Package the IPA
         run: |
