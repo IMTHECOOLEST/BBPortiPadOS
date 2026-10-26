@@ -30,9 +30,13 @@ fi
 # ---- the runtime's prepare scripts ----
 RUNTIME_SRC=${RUNTIME_DIR:-}
 if [[ -z $RUNTIME_SRC ]]; then
-  RUNTIME_REPO=${RUNTIME_REPO:-https://github.com/bloodborne-native/bloodborne-runtime.git}
-  rm -rf Vendor/runtime-src
-  git clone --depth 1 "$RUNTIME_REPO" Vendor/runtime-src
+  # build_runtime.sh has usually cloned it already: use that copy (re-cloning would also delete its
+  # build logs).
+  if [[ ! -d Vendor/runtime-src/scripts || ! -f Vendor/runtime-src/patches/Bloodborne.xml ]]; then
+    RUNTIME_REPO=${RUNTIME_REPO:-https://github.com/bloodborne-native/bloodborne-runtime.git}
+    rm -rf Vendor/runtime-src
+    git clone --depth 1 "$RUNTIME_REPO" Vendor/runtime-src
+  fi
   RUNTIME_SRC=$ROOT/Vendor/runtime-src
 fi
 rm -rf App/bbpy/runtime

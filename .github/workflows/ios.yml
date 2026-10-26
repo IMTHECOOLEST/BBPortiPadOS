@@ -112,6 +112,15 @@ jobs:
           zip -qry Bloodborne.ipa Payload
           codesign -d --entitlements - "$APP" 2>&1 | head -20 || true
 
+      # Full build logs (the step output only shows the first and last lines of them).
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: Vendor/logs
+          if-no-files-found: ignore
+
       # The recompiled game library is made from your own game and is never built here:
       # scripts/mac/build_recomp_ios.sh, then scripts/mac/embed_recomp.sh.
       - uses: actions/upload-artifact@v4

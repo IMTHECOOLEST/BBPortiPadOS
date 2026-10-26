@@ -16,7 +16,9 @@ if [[ ! -d $RECOMP/src/cpu ]]; then
 fi
 cd "$RECOMP"
 for p in "$ROOT"/patches/recomp/*.patch; do
-  if patch -p1 --dry-run -s < "$p" >/dev/null 2>&1; then patch -p1 -s < "$p"; echo "patched: $(basename "$p")"; fi
+  if patch -p1 --dry-run -s < "$p" >/dev/null 2>&1; then patch -p1 -s < "$p"; echo "patched: $(basename "$p")"
+  elif patch -R -p1 --dry-run -s < "$p" >/dev/null 2>&1; then echo "already applied: $(basename "$p")"
+  else echo "PATCH DOES NOT APPLY: $(basename "$p") (the upstream source changed; update the patch)" >&2; exit 1; fi
 done
 [[ -f $GAME/eboot.bin ]] || { echo "No eboot.bin in $GAME" >&2; exit 1; }
 ./build.sh                                   # host tools: bbcpu, scan, bbrecomp, Zydis

@@ -6,6 +6,25 @@ Python, YAML and plists parse, the shell scripts pass `bash -n`, and all five ru
 both recomp patches apply, in order, to the source you sent. The Swift, Objective-C, the iOS
 cross-builds and the workflow have not been through a compiler or a runner.
 
+## First CI run (26 Oct): what failed and what changed
+
+- **GPU library** (`build_runtime.sh`): `no type named 'stop_token' in namespace 'std'`. Xcode's libc++
+  keeps `std::jthread`/`std::stop_token` behind `-fexperimental-library`; the script now adds it to
+  the `bbgpu` target. The old script showed only the last 40 lines of the log (the first six of the
+  seven errors were cut off); it now builds with `ninja -k 0`, prints every `error:` line first and
+  keeps the whole log in `Vendor/logs/` (uploaded as the `build-logs` artifact). More errors may still
+  be behind the first ones: read that artifact.
+- **PKG extractor** (`build_pkgtool.sh`): `install TARGETS given no BUNDLE DESTINATION for MACOSX_BUNDLE
+  executable target "ps4-pkg-tool"`. With `CMAKE_SYSTEM_NAME=iOS` every executable is a bundle. The
+  vendored CMakeLists has a new `BUILD_PKG_CLI` option (default ON) and the script turns it OFF: only
+  the static core is needed. `mapfile` (bash 4, the runner's bash is 3.2) was replaced by a loop,
+  which would have been the next failure.
+- Patches that no longer apply now stop the build instead of being skipped silently.
+- `setup_deps.sh` reuses `Vendor/runtime-src` instead of deleting and re-cloning it.
+- Xcode: the "Embed runtime libraries" phase runs through `bash` (a repo uploaded through the GitHub
+  web page loses the executable bit); `Python.xcframework` is embedded (a dynamic framework: missing
+  it crashes the app at launch); Swift names that could clash (`Tab`, `sfo`) renamed.
+
 ## What the recomp repo changed
 
 - **JIT is no longer a blocker.** bbcpu already falls back to its interpreter when `MAP_JIT`

@@ -93,12 +93,17 @@ endif()
 #---------------------------------------------
 # CLI tool
 #---------------------------------------------
-add_executable(ps4-pkg-tool src/cli/main.cpp)
-target_link_libraries(ps4-pkg-tool PRIVATE ps4_pkg_tool_core)
-if(MSVC)
-  target_link_libraries(ps4-pkg-tool PRIVATE ws2_32)
+# BBPortiPadOS: -DBUILD_PKG_CLI=OFF skips the command-line tool. For iOS CMake makes executables
+# MACOSX_BUNDLEs and install(TARGETS ... RUNTIME) then fails at generation time.
+option(BUILD_PKG_CLI "Build the ps4-pkg-tool command-line program" ON)
+if(BUILD_PKG_CLI)
+  add_executable(ps4-pkg-tool src/cli/main.cpp)
+  target_link_libraries(ps4-pkg-tool PRIVATE ps4_pkg_tool_core)
+  if(MSVC)
+    target_link_libraries(ps4-pkg-tool PRIVATE ws2_32)
+  endif()
+  install(TARGETS ps4-pkg-tool RUNTIME DESTINATION bin BUNDLE DESTINATION bin)
 endif()
-install(TARGETS ps4-pkg-tool RUNTIME DESTINATION bin)
 
 #---------------------------------------------
 # Optional minimal Qt GUI frontend

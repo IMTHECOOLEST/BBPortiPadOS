@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum Tab: String, CaseIterable, Identifiable {
+enum LauncherTab: String, CaseIterable, Identifiable {
     case home = "Home", graphics = "Graphics", controls = "Controls", advanced = "Advanced", log = "Log"
     var id: String { rawValue }
     var symbol: String {
@@ -17,11 +17,11 @@ enum Tab: String, CaseIterable, Identifiable {
 
 /// The launcher's sidebar layout (Home, Graphics, Controls, Advanced), kept on purpose.
 struct RootView: View {
-    @State private var tab: Tab? = .home
+    @State private var tab: LauncherTab? = .home
 
     var body: some View {
         NavigationSplitView {
-            List(Tab.allCases, selection: $tab) { item in
+            List(LauncherTab.allCases, selection: $tab) { item in
                 Label(item.rawValue, systemImage: item.symbol).tag(item)
             }
             .navigationTitle("Bloodborne")

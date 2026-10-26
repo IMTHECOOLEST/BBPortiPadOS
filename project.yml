@@ -69,6 +69,12 @@ targets:
           - "-framework UniformTypeIdentifiers"
           - "-framework ImageIO"
           - "-framework CoreGraphics"
+    dependencies:
+      # Python.xcframework holds a dynamic Python.framework: it has to be embedded in the app
+      # (and signed with it), otherwise dyld cannot load it at launch.
+      - framework: Vendor/Python.xcframework
+        embed: true
+        codeSign: true
     postCompileScripts:
       - name: Install Python stdlib
         basedOnDependencyAnalysis: false
@@ -83,4 +89,4 @@ targets:
     postBuildScripts:
       - name: Embed runtime libraries
         basedOnDependencyAnalysis: false
-        script: '"$PROJECT_DIR/scripts/ios/embed_libs.sh"'
+        script: 'bash "$PROJECT_DIR/scripts/ios/embed_libs.sh"'

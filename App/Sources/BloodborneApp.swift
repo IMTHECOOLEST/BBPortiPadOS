@@ -14,7 +14,7 @@ struct BloodborneApp: App {
                 .environmentObject(launcher)
                 .preferredColorScheme(.dark)
                 .statusBarHidden(true)
-                .task { games.restore() }
+                .task { await games.restore() }
         }
     }
 }

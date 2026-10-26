@@ -69,10 +69,10 @@ enum GameValidator {
         let fm = FileManager.default
         guard fm.fileExists(atPath: folder.appendingPathComponent("eboot.bin").path) else { return .missingEboot }
         guard fm.fileExists(atPath: folder.appendingPathComponent("sce_sys/param.sfo").path) else { return .missingParam }
-        guard let sfo = sfo(in: folder) else { return .unreadableParam }
-        let title = sfo.values["TITLE_ID"] ?? "unknown"
+        guard let param = sfo(in: folder) else { return .unreadableParam }
+        let title = param.values["TITLE_ID"] ?? "unknown"
         guard title == requiredTitleID else { return .wrongTitle(title) }
-        let version = sfo.values["APP_VER"] ?? sfo.values["VERSION"] ?? "unknown"
+        let version = param.values["APP_VER"] ?? param.values["VERSION"] ?? "unknown"
         if requireUpdate && !version.hasPrefix(requiredVersionPrefix) { return .wrongVersion(version) }
         return .ok(version: version)
     }
