@@ -110,7 +110,17 @@ if needed zydis; then
   fetch zydis "https://github.com/zyantific/zydis.git#$ZYDIS_VERSION"
   cmake -S "$WORK/src/zydis/dependencies/zycore" -B "$WORK/zycore" "${cmake_ios[@]}" -DBUILD_SHARED_LIBS=OFF >/dev/null
   cmake --build "$WORK/zycore" -j "$JOBS" >/dev/null && cmake --install "$WORK/zycore" >/dev/null
+  # Cross-compiling for iOS, CMake searches for packages under the SDK only, not in CMAKE_PREFIX_PATH
+  # (the macOS build is native and finds Zycore there). Zydis is pointed at the installed package.
+  zycore_cfg=$(find "$PREFIX" \( -iname 'zycoreconfig.cmake' -o -iname 'zycore-config.cmake' \) | sed -n 1p)
+  if [[ -z $zycore_cfg ]]; then
+    echo "Zycore installed no CMake package file. It installed:" >&2
+    find "$PREFIX" -ipath '*zycore*' | sed -n 1,30p >&2
+    exit 1
+  fi
+  zycore_dir=$(dirname "$zycore_cfg")
   cmake -S "$WORK/src/zydis" -B "$WORK/zydis" "${cmake_ios[@]}" -DBUILD_SHARED_LIBS=OFF -DZYAN_SYSTEM_ZYCORE=ON \
+    -DZycore_DIR="$zycore_dir" -Dzycore_DIR="$zycore_dir" -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
     -DCMAKE_C_FLAGS="-I$PREFIX/include" -DZYDIS_BUILD_TOOLS=OFF -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_DOXYGEN=OFF >/dev/null
   cmake --build "$WORK/zydis" -j "$JOBS" >/dev/null && cmake --install "$WORK/zydis" >/dev/null
   touch "$(mark zydis)"
