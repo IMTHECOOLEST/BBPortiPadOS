@@ -75,18 +75,10 @@ targets:
       - framework: Vendor/Python.xcframework
         embed: true
         codeSign: true
-    postCompileScripts:
+    postBuildScripts:
       - name: Install Python stdlib
         basedOnDependencyAnalysis: false
-        script: |
-          set -e
-          if [ -f "$PROJECT_DIR/Vendor/Python.xcframework/build/utils.sh" ]; then
-            source "$PROJECT_DIR/Vendor/Python.xcframework/build/utils.sh"
-            install_python Vendor/Python.xcframework app
-          else
-            echo "warning: Vendor/Python.xcframework missing; run scripts/setup_deps.sh"
-          fi
-    postBuildScripts:
+        script: 'bash "$PROJECT_DIR/scripts/ios/install_python.sh"'
       - name: Embed runtime libraries
         basedOnDependencyAnalysis: false
         script: 'bash "$PROJECT_DIR/scripts/ios/embed_libs.sh"'
