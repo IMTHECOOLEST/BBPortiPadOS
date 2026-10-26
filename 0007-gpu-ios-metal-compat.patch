@@ -1,0 +1,146 @@
+diff -ruN a/gpu/games/bloodborne_menu_pointer.cpp b/gpu/games/bloodborne_menu_pointer.cpp
+--- a/gpu/games/bloodborne_menu_pointer.cpp	2026-10-26 10:01:31.958305409 +0000
++++ b/gpu/games/bloodborne_menu_pointer.cpp	2026-10-26 10:01:31.978487019 +0000
+@@ -46,8 +46,13 @@
+ #include "common/types.h"
+ 
+ #if defined(__APPLE__)
++#include <TargetConditionals.h>
+ #include <mach/mach.h>
++#if TARGET_OS_IPHONE
++#include <mach/vm_map.h> // the iOS SDK has no mach_vm.h
++#else
+ #include <mach/mach_vm.h>
++#endif
+ #else
+ #include <sys/uio.h>
+ #include <unistd.h>
+@@ -90,7 +95,13 @@
+     if (address < 0x10000) {
+         return false;
+     }
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && TARGET_OS_IPHONE
++    // vm_read_overwrite does what mach_vm_read_overwrite does (an arm64 task's vm_size_t is 64 bits).
++    vm_size_t got = 0;
++    return vm_read_overwrite(mach_task_self(), address, size, reinterpret_cast<vm_address_t>(out),
++                             &got) == KERN_SUCCESS &&
++           got == size;
++#elif defined(__APPLE__)
+     mach_vm_size_t got = 0;
+     return mach_vm_read_overwrite(mach_task_self(), address, size, reinterpret_cast<mach_vm_address_t>(out),
+                                   &got) == KERN_SUCCESS &&
+diff -ruN a/gpu/shadps4/video_core/renderer_metal/mtl_frame.mm b/gpu/shadps4/video_core/renderer_metal/mtl_frame.mm
+--- a/gpu/shadps4/video_core/renderer_metal/mtl_frame.mm	2026-10-26 10:01:31.966736817 +0000
++++ b/gpu/shadps4/video_core/renderer_metal/mtl_frame.mm	2026-10-26 10:01:31.985340198 +0000
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ // From Wooloomooloo2/bloodborne_mac_port (78b59f5, GPL-2.0-or-later), adapted to bloodborne-runtime.
+ 
++#include <TargetConditionals.h>
+ #include <dlfcn.h>
+ #include <xxhash.h>
+ #include <mach-o/dyld.h>
+@@ -931,9 +932,14 @@
+         pixel_format = base.pixelFormat;
+         if (range.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT &&
+             VkToMtl::IsDepthPixelFormat(u32(base.pixelFormat))) {
++#if TARGET_OS_IPHONE
++            // iOS has no 24-bit depth formats (D24S8 is Depth32Float_Stencil8 here).
++            pixel_format = MTLPixelFormatX32_Stencil8;
++#else
+             pixel_format = base.pixelFormat == MTLPixelFormatDepth32Float_Stencil8
+                                ? MTLPixelFormatX32_Stencil8
+                                : MTLPixelFormatX24_Stencil8;
++#endif
+         }
+     }
+     const NSUInteger levels = range.levelCount == VK_REMAINING_MIP_LEVELS
+diff -ruN a/gpu/shadps4/video_core/renderer_metal/mtl_present.mm b/gpu/shadps4/video_core/renderer_metal/mtl_present.mm
+--- a/gpu/shadps4/video_core/renderer_metal/mtl_present.mm	2026-10-26 10:01:31.962648439 +0000
++++ b/gpu/shadps4/video_core/renderer_metal/mtl_present.mm	2026-10-26 10:01:31.982380594 +0000
+@@ -3,6 +3,7 @@
+ 
+ #import <Metal/Metal.h>
+ #import <QuartzCore/CAMetalLayer.h>
++#include <TargetConditionals.h>
+ 
+ #include <algorithm>
+ #include <cstdio>
+@@ -21,7 +22,9 @@
+     // Presents copy into the drawable (a blit), so its texture is not framebuffer-only.
+     layer.framebufferOnly = NO;
+     layer.maximumDrawableCount = std::clamp<NSUInteger>(config.max_drawables, 2, 3);
+-    layer.displaySyncEnabled = config.display_sync;
++#if !TARGET_OS_IPHONE
++    layer.displaySyncEnabled = config.display_sync; // macOS only: iOS always presents in sync
++#endif
+     layer.opaque = YES;
+     CGColorSpaceRef space = CGColorSpaceCreateWithName(
+         config.hdr ? kCGColorSpaceITUR_2100_PQ : kCGColorSpaceSRGB);
+diff -ruN a/gpu/shadps4/video_core/renderer_metal/vk_to_mtl.mm b/gpu/shadps4/video_core/renderer_metal/vk_to_mtl.mm
+--- a/gpu/shadps4/video_core/renderer_metal/vk_to_mtl.mm	2026-10-26 10:01:31.970930475 +0000
++++ b/gpu/shadps4/video_core/renderer_metal/vk_to_mtl.mm	2026-10-26 10:01:31.988918890 +0000
+@@ -3,6 +3,7 @@
+ // bbport: from Huax-1839/bloodborne-macos (0f0cf54, GPL-2.0-or-later), renderer_metal/.
+ 
+ #import <Metal/Metal.h>
++#include <TargetConditionals.h>
+ 
+ #include "video_core/renderer_metal/vk_to_mtl.h"
+ 
+@@ -424,7 +425,9 @@
+     switch (static_cast<MTLPixelFormat>(format)) {
+     case MTLPixelFormatDepth16Unorm:
+     case MTLPixelFormatDepth32Float:
++#if !TARGET_OS_IPHONE
+     case MTLPixelFormatDepth24Unorm_Stencil8:
++#endif
+     case MTLPixelFormatDepth32Float_Stencil8:
+         return true;
+     default:
+@@ -435,10 +438,14 @@
+ bool HasStencilPixelFormat(u32 format) {
+     switch (static_cast<MTLPixelFormat>(format)) {
+     case MTLPixelFormatStencil8:
++#if !TARGET_OS_IPHONE
+     case MTLPixelFormatDepth24Unorm_Stencil8:
++#endif
+     case MTLPixelFormatDepth32Float_Stencil8:
+     case MTLPixelFormatX32_Stencil8:
++#if !TARGET_OS_IPHONE
+     case MTLPixelFormatX24_Stencil8:
++#endif
+         return true;
+     default:
+         return false;
+diff -ruN a/gpu/shadps4/video_core/renderer_vulkan/vk_fsr4_metal.mm b/gpu/shadps4/video_core/renderer_vulkan/vk_fsr4_metal.mm
+--- a/gpu/shadps4/video_core/renderer_vulkan/vk_fsr4_metal.mm	2026-10-26 10:01:31.974218842 +0000
++++ b/gpu/shadps4/video_core/renderer_vulkan/vk_fsr4_metal.mm	2026-10-26 10:01:31.992467261 +0000
+@@ -15,6 +15,19 @@
+ #include "video_core/renderer_vulkan/vk_fsr4_metal.h"
+ 
+ #ifdef __APPLE__
++#include <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++// iOS: FSR 4.1.1 on Metal is not built. It needs the Metal 4 headers (the iOS 18.5 SDK in Xcode 16
++// has none) and kernels that are built on a Mac; the callers then fall back to the other upscalers.
++namespace Vulkan {
++bool Fsr4MetalBackend::IsSupported(const Instance&) {
++    return false;
++}
++std::unique_ptr<Fsr4MetalBackend> Fsr4MetalBackend::Create(const Instance&, Scheduler&) {
++    return nullptr;
++}
++} // namespace Vulkan
++#else
+ #import <Foundation/Foundation.h>
+ #import <Metal/Metal.h>
+ #include <algorithm>
+@@ -384,4 +397,5 @@
+ }
+ 
+ } // namespace Vulkan
+-#endif
++#endif // !TARGET_OS_IPHONE
++#endif // __APPLE__
