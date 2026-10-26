@@ -2,7 +2,9 @@
 # Xcode build phase: copies the embedded Python's standard library into the app bundle
 # (<app>/python/lib/python3.x, which RuntimeLauncher.swift passes to CPython as its home) and signs
 # the extension modules in it when the build is signed. Self-contained on purpose: it does not
-# depend on BeeWare's build/utils.sh, whose API changes between releases.
+# depend on BeeWare's build/utils.sh, whose API changes between releases, and it FINDS the
+# standard library inside Vendor/Python.xcframework instead of assuming where a given
+# Python-Apple-support release puts it.
 #
 # Extension modules stay where they are (lib-dynload/*.dylib or *.so): CPython loads them with
 # dlopen. They are NOT converted into frameworks (the App Store rule): that conversion leaves
@@ -19,34 +21,65 @@ fi
 
 APP=${CODESIGNING_FOLDER_PATH:-${TARGET_BUILD_DIR:?}/${FULL_PRODUCT_NAME:?}}
 
-# Which slice of the xcframework matches this build.
 case "${PLATFORM_NAME:-iphoneos}" in
-  iphonesimulator) SLICE_GLOB="ios-*simulator" ;;
-  *)               SLICE_GLOB="ios-arm64" ;;
+  iphonesimulator) SLICE_PATTERN='*simulator*' ;;
+  *)               SLICE_PATTERN='*/ios-arm64/*' ;;
 esac
-SRC=""
-for dir in "$XC"/$SLICE_GLOB; do
-  if [[ -d $dir/lib ]]; then SRC="$dir/lib"; break; fi
-done
-if [[ -z $SRC ]]; then
-  echo "error: no $SLICE_GLOB/lib folder in $XC" >&2
-  ls "$XC" >&2 || true
+
+# pick_first PATTERN LIST: the first line of LIST that matches PATTERN (empty when none does).
+pick_first() {
+  local pattern=$1 line
+  while IFS= read -r line; do
+    [[ -n $line ]] || continue
+    case $line in
+      $pattern) printf '%s\n' "$line"; return 0 ;;
+    esac
+  done <<< "$2"
+  return 0
+}
+
+# The standard library is the python3.x folder that holds os.py (find -L: it may be a symlink).
+OS_FILES=$(find -L "$XC" -maxdepth 7 -type f -path '*/python3.*/os.py' 2>/dev/null | sort || true)
+STDLIB_LIST=""
+while IFS= read -r f; do
+  [[ -n $f ]] || continue
+  STDLIB_LIST+="$(dirname "$f")"$'\n'
+done <<< "$OS_FILES"
+
+STDLIB_SRC=$(pick_first "$SLICE_PATTERN" "$STDLIB_LIST")
+if [[ -z $STDLIB_SRC ]]; then
+  STDLIB_SRC=$(printf '%s' "$STDLIB_LIST" | head -n 1)   # shared by all slices
+fi
+if [[ -z $STDLIB_SRC ]]; then
+  echo "error: no python3.x standard library (a folder with os.py) found in $XC" >&2
+  echo "Contents of the xcframework:" >&2
+  find -L "$XC" -maxdepth 4 2>/dev/null | head -n 120 >&2 || true
   exit 1
 fi
 
+NAME=$(basename "$STDLIB_SRC")
 DEST="$APP/python/lib"
-echo "Installing the Python standard library from $SRC"
-rm -rf "$DEST"
-mkdir -p "$DEST"
-cp -R "$SRC/." "$DEST/"
+STDLIB="$DEST/$NAME"
+echo "Installing the Python standard library from ${STDLIB_SRC#$ROOT/}"
+rm -rf "$APP/python"
+mkdir -p "$STDLIB"
+if ! cp -RL "$STDLIB_SRC/." "$STDLIB/"; then
+  rm -rf "$STDLIB"; mkdir -p "$STDLIB"
+  cp -R "$STDLIB_SRC/." "$STDLIB/"
+fi
 
-STDLIB=""
-for dir in "$DEST"/python3.*; do
-  if [[ -d $dir ]]; then STDLIB="$dir"; fi
-done
-if [[ -z $STDLIB || ! -f $STDLIB/os.py ]]; then
-  echo "error: no python3.x standard library under $DEST" >&2
-  exit 1
+# Some releases keep the compiled extension modules apart from the shared pure-Python library.
+if [[ ! -d $STDLIB/lib-dynload ]]; then
+  DYN_LIST=$(find -L "$XC" -maxdepth 7 -type d -name lib-dynload 2>/dev/null | sort || true)
+  DYN_SRC=$(pick_first "$SLICE_PATTERN" "$DYN_LIST")
+  if [[ -z $DYN_SRC ]]; then DYN_SRC=$(printf '%s' "$DYN_LIST" | head -n 1); fi
+  if [[ -n $DYN_SRC ]]; then
+    echo "Installing the extension modules from ${DYN_SRC#$ROOT/}"
+    mkdir -p "$STDLIB/lib-dynload"
+    cp -RL "$DYN_SRC/." "$STDLIB/lib-dynload/"
+  else
+    echo "warning: no lib-dynload folder found: Python extension modules (math, _struct, ...) will be missing" >&2
+  fi
 fi
 echo "Standard library: ${STDLIB#$APP/}"
 
