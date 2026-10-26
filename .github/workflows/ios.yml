@@ -1,3 +1,4 @@
+
 name: Build iPad app
 
 on:
@@ -27,18 +28,18 @@ jobs:
           key: ios-deps-${{ hashFiles('scripts/ios/build_deps.sh') }}
 
       - name: Build the iOS libraries (SDL3, MoltenVK, FFmpeg, ...)
-        run: scripts/ios/build_deps.sh
+        run: bash scripts/ios/build_deps.sh
 
       - name: Build the runtime for iPadOS (patched bloodborne-runtime and bbcpu)
-        run: scripts/ios/build_runtime.sh
+        run: bash scripts/ios/build_runtime.sh
 
       - name: Build the PKG extractor for iPadOS
-        run: scripts/ios/build_pkgtool.sh
+        run: bash scripts/ios/build_pkgtool.sh
 
       - name: Fetch Python for iOS
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/setup_deps.sh
+        run: bash scripts/setup_deps.sh
 
       - name: Generate the Xcode project
         run: xcodegen generate
